@@ -18,15 +18,26 @@ from .revenue_tracking_agent import RevenueTrackingAgent
 from config.settings import AgencyConfig, Niche, ContentFormat, Platform
 
 
+# Content-producing tasks that should be queued for review
+CONTENT_TASKS = {
+    "write_listicle", "write_review", "write_comparison", "write_tutorial",
+    "write_case_study", "write_video_script", "write_social_post", "write_email",
+    "lead_magnet", "landing_page", "newsletter", "welcome_sequence",
+}
+
+
 class AgencyOrchestrator:
     """
     Central orchestrator for the Affiliate Marketing Agency.
     Coordinates all agents through the 30-day business plan.
     """
 
-    def __init__(self, config: AgencyConfig | None = None, llm_client: Any = None):
+    def __init__(self, config: AgencyConfig | None = None, llm_client: Any = None,
+                 tracker: Any = None, content_queue: Any = None):
         self.config = config or AgencyConfig()
         self.llm_client = llm_client
+        self.tracker = tracker
+        self.content_queue = content_queue
 
         # Initialize all agents
         self.agents = {
@@ -58,10 +69,59 @@ class AgencyOrchestrator:
             context = task_config.get("context", {})
 
             self._log(f"Running: {task_name} → {agent_name}.{agent_task}")
+
+            # Track agent status
+            if self.tracker:
+                self.tracker.mark_running(agent_name, agent_task)
+
             agent = self.agents[agent_name]
             result = agent.execute(agent_task, context)
             results[task_name] = result
             self.execution_log.append(result)
+
+            # Update tracker
+            if self.tracker:
+                if result.success:
+                    preview = ""
+                    if isinstance(result.output, dict):
+                        preview = result.output.get("topic", result.output.get("type", str(result.output)[:80]))
+                    elif isinstance(result.output, str):
+                        preview = result.output[:80]
+                    self.tracker.mark_done(agent_name, str(preview))
+                else:
+                    self.tracker.mark_error(agent_name, "; ".join(result.errors))
+
+            # Queue content-producing tasks for review
+            if self.content_queue and agent_task in CONTENT_TASKS:
+                body = ""
+                title = task_name
+                content_type = agent_task.replace("write_", "")
+                if isinstance(result.output, dict):
+                    body = result.output.get("content", "")
+                    if not body:
+                        body = result.output.get("script", "")
+                    if not body:
+                        body = result.output.get("lead_magnet", "")
+                    if not body:
+                        body = result.output.get("landing_page_copy", "")
+                    if not body:
+                        body = result.output.get("welcome_sequence", "")
+                    if not body:
+                        body = result.output.get("newsletter_plan", "")
+                    if not body:
+                        body = str(result.output)
+                    title = result.output.get("topic", result.output.get("product", result.output.get("offer", task_name)))
+                    content_type = result.output.get("type", content_type)
+                elif isinstance(result.output, str):
+                    body = result.output
+                self.content_queue.add(
+                    title=str(title) or task_name,
+                    content_type=str(content_type),
+                    agent=agent_name,
+                    task=agent_task,
+                    body=str(body),
+                    day=day,
+                )
 
         return {
             "day": day,

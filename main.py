@@ -18,6 +18,10 @@ from typing import Any
 from config.settings import AgencyConfig, Niche, Platform
 from agents.orchestrator import AgencyOrchestrator
 from workflows.sprint_workflow import SprintWorkflow
+from dashboard import (
+    AgentTracker, ContentQueue,
+    render_dashboard, render_content_review, render_queue_list,
+)
 
 
 def setup_llm_client() -> Any:
@@ -56,7 +60,8 @@ def print_result(result: Any, indent: int = 2) -> None:
         print(json.dumps(result, indent=indent, default=str))
 
 
-def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow) -> None:
+def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
+                     tracker: AgentTracker, content_queue: ContentQueue) -> None:
     """Run the agency in interactive mode."""
     print("\n" + "=" * 60)
     print("  AFFILIATE MARKETING AGENCY — AI Agent System")
@@ -76,6 +81,12 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow)
     progress        — View sprint progress
     focus           — View today's focus
     agents          — List all agents
+    dashboard / db  — View live agent dashboard
+    queue           — List content awaiting review
+    review <ID>     — View content item in detail
+    approve <ID>    — Approve a content item
+    reject <ID> [reason] — Reject content with feedback
+    export          — Export approved content to file
     quit            — Exit
     """
     print(commands)
@@ -106,6 +117,47 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow)
             for name in orchestrator.agents:
                 agent = orchestrator.agents[name]
                 print(f"  {name:25s} — {agent.__class__.__name__}")
+
+        # ── Dashboard & Content Review commands ──
+        elif command in ("dashboard", "db"):
+            print(render_dashboard(tracker, content_queue, orchestrator.config, workflow))
+        elif command == "queue":
+            status_filter = parts[1] if len(parts) >= 2 else None
+            print(render_queue_list(content_queue, status_filter))
+        elif command == "review" and len(parts) >= 2:
+            try:
+                item_id = int(parts[1])
+                item = content_queue.get(item_id)
+                if item:
+                    print(render_content_review(item))
+                else:
+                    print(f"  Content item #{item_id} not found.")
+            except ValueError:
+                print("  Usage: review <ID>")
+        elif command == "approve" and len(parts) >= 2:
+            try:
+                item_id = int(parts[1])
+                if content_queue.approve(item_id):
+                    print(f"  Content #{item_id} APPROVED.")
+                else:
+                    print(f"  Content item #{item_id} not found.")
+            except ValueError:
+                print("  Usage: approve <ID>")
+        elif command == "reject" and len(parts) >= 2:
+            try:
+                item_id = int(parts[1])
+                feedback = " ".join(parts[2:]) if len(parts) > 2 else ""
+                if content_queue.reject(item_id, feedback):
+                    print(f"  Content #{item_id} REJECTED.{f' Feedback: {feedback}' if feedback else ''}")
+                else:
+                    print(f"  Content item #{item_id} not found.")
+            except ValueError:
+                print("  Usage: reject <ID> [reason]")
+        elif command == "export":
+            path = content_queue.export_approved()
+            print(f"  Exported to: {path}")
+
+        # ── Execution commands ──
         elif command == "day" and len(parts) >= 2:
             try:
                 day = int(parts[1])
@@ -129,7 +181,6 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow)
             task = parts[2]
             context = {}
             if len(parts) > 3:
-                # Simple key=value context parsing
                 for p in parts[3:]:
                     if "=" in p:
                         k, v = p.split("=", 1)
@@ -170,7 +221,12 @@ def main() -> None:
     )
 
     llm_client = setup_llm_client()
-    orchestrator = AgencyOrchestrator(config, llm_client)
+
+    # Initialize dashboard components
+    tracker = AgentTracker()
+    content_queue = ContentQueue()
+
+    orchestrator = AgencyOrchestrator(config, llm_client, tracker=tracker, content_queue=content_queue)
     workflow = SprintWorkflow(config)
 
     if args.day:
@@ -186,7 +242,7 @@ def main() -> None:
         result = orchestrator.execute_task(args.agent, args.task)
         print_result(result)
     else:
-        interactive_mode(orchestrator, workflow)
+        interactive_mode(orchestrator, workflow, tracker, content_queue)
 
 
 if __name__ == "__main__":
