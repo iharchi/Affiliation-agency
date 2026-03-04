@@ -152,11 +152,22 @@ def api_export():
 
 # ── API: Run tasks (background) ─────────────────────────────────────────────
 
+def _complete_milestones_up_to(day: int) -> None:
+    """Mark sprint milestones as complete when their due day has been reached."""
+    if not workflow:
+        return
+    for sprint in workflow.sprints:
+        for m in sprint.milestones:
+            if m.day <= day and not m.completed:
+                workflow.complete_milestone(sprint.week, m.name)
+
+
 def _run_day_background(day: int) -> None:
     """Execute a day's tasks in a background thread."""
     global _current_job
     try:
         result = orchestrator.run_day(day)
+        _complete_milestones_up_to(day)
         with _job_lock:
             _current_job = {"running": False, "day": day, "error": None,
                             "tasks_completed": result.get("tasks_completed", 0)}
