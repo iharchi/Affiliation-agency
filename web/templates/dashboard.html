@@ -145,6 +145,16 @@
 
   /* Auto-refresh indicator */
   .refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+
+  /* Job banner */
+  .job-banner { background: var(--blue-bg); border: 1px solid rgba(96,165,250,0.25); border-radius: var(--radius); padding: 12px 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  .job-banner.hidden { display: none; }
+  .job-banner.error { background: var(--red-bg); border-color: rgba(248,113,113,0.25); }
+  .job-spinner { width: 18px; height: 18px; border: 2px solid var(--blue); border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  .job-banner.error .job-spinner { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .job-text { font-weight: 600; font-size: 13px; color: var(--blue); }
+  .job-banner.error .job-text { color: var(--red); }
 </style>
 </head>
 <body>
@@ -165,6 +175,12 @@
 </div>
 
 <div class="container">
+
+  <!-- Job Banner -->
+  <div class="job-banner hidden" id="job-banner">
+    <div class="job-spinner"></div>
+    <div class="job-text" id="job-text">Running agents...</div>
+  </div>
 
   <!-- Stat cards -->
   <div class="grid-3" id="stat-cards">
@@ -423,12 +439,15 @@ async function runDay() {
   const day = parseInt(document.getElementById('run-day-input').value, 10);
   if (day < 1 || day > 30) return;
   const btn = document.querySelector('.btn-run');
+  const res = await fetch(`/api/run/day/${day}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) {
+    alert(data.error);
+    return;
+  }
+  // Button stays in running state until job completes
   btn.textContent = 'Running...';
   btn.disabled = true;
-  await fetch(`/api/run/day/${day}`, { method: 'POST' });
-  btn.textContent = 'Run Day';
-  btn.disabled = false;
-  refresh();
 }
 
 // ── Refresh loop ──
@@ -440,11 +459,38 @@ async function refresh() {
   ]);
   renderDashboard(dashboard);
   renderContent(content);
+
+  // Update run button and job banner
+  const btn = document.querySelector('.btn-run');
+  const banner = document.getElementById('job-banner');
+  const jobText = document.getElementById('job-text');
+  const job = dashboard.job || {};
+
+  if (job.running) {
+    btn.textContent = `Running Day ${job.day}...`;
+    btn.disabled = true;
+    banner.classList.remove('hidden', 'error');
+    // Find which agent is currently running
+    const running = dashboard.agents.find(a => a.status === 'running');
+    jobText.textContent = running
+      ? `Day ${job.day} — ${running.display_name} is working on: ${running.current_task}...`
+      : `Day ${job.day} — Agents are working...`;
+  } else {
+    btn.textContent = 'Run Day';
+    btn.disabled = false;
+    if (job.error) {
+      banner.classList.remove('hidden');
+      banner.classList.add('error');
+      jobText.textContent = `Error: ${job.error}`;
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
 }
 
-// Initial load + auto-refresh every 3s
+// Initial load + auto-refresh every 2s
 refresh();
-setInterval(refresh, 3000);
+setInterval(refresh, 2000);
 
 // Close modal on Escape
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });

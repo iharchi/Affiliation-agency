@@ -69,7 +69,11 @@ class BaseAgent(ABC):
         else:
             messages = [{"role": "system", "content": sys_prompt}]
             messages.extend(self.get_memory_context())
-            response = self._invoke_llm(messages)
+            try:
+                response = self._invoke_llm(messages)
+            except Exception as e:
+                self.log(f"LLM call failed: {e}")
+                response = f"[{self.name}] LLM call failed: {type(e).__name__}: {str(e)[:200]}"
 
         self.add_to_memory("assistant", response)
         return response
