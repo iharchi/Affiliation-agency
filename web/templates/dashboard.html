@@ -464,13 +464,13 @@ async function refresh() {
   const btn = document.querySelector('.btn-run');
   const banner = document.getElementById('job-banner');
   const jobText = document.getElementById('job-text');
+  const dayInput = document.getElementById('run-day-input');
   const job = dashboard.job || {};
 
   if (job.running) {
     btn.textContent = `Running Day ${job.day}...`;
     btn.disabled = true;
     banner.classList.remove('hidden', 'error');
-    // Find which agent is currently running
     const running = dashboard.agents.find(a => a.status === 'running');
     jobText.textContent = running
       ? `Day ${job.day} — ${running.display_name} is working on: ${running.current_task}...`
@@ -482,6 +482,13 @@ async function refresh() {
       banner.classList.remove('hidden');
       banner.classList.add('error');
       jobText.textContent = `Error: ${job.error}`;
+    } else if (job.day && job.tasks_completed) {
+      const nextDay = job.day + 1;
+      if (nextDay <= 30 && parseInt(dayInput.value, 10) <= job.day) {
+        dayInput.value = nextDay;
+      }
+      banner.classList.remove('hidden', 'error');
+      jobText.textContent = `Day ${job.day} complete (${job.tasks_completed} tasks). Ready for Day ${nextDay}.`;
     } else {
       banner.classList.add('hidden');
     }

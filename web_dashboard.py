@@ -286,4 +286,4 @@ if __name__ == "__main__":
 
     create_app(args.niche, args.target)
     print(f"\n  Dashboard running at http://localhost:{args.port}\n")
-    app.run(host="0.0.0.0", port=args.port, debug=True)
+    app.run(host="0.0.0.0", port=args.port, debug=True, use_reloader=False)
