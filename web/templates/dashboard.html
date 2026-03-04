@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Affiliate Agency Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3348;
+    --text: #e1e4ed;
+    --text-dim: #8b90a5;
+    --accent: #6c72ff;
+    --accent-glow: rgba(108,114,255,0.15);
+    --green: #34d399;
+    --green-bg: rgba(52,211,153,0.12);
+    --red: #f87171;
+    --red-bg: rgba(248,113,113,0.12);
+    --yellow: #fbbf24;
+    --yellow-bg: rgba(251,191,36,0.12);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,0.12);
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 14px; line-height: 1.5; }
+
+  /* Top bar */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50; }
+  .topbar h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+  .topbar h1 span { color: var(--accent); }
+  .topbar-meta { display: flex; gap: 24px; color: var(--text-dim); font-size: 13px; }
+  .topbar-meta strong { color: var(--text); font-weight: 600; }
+
+  /* Layout */
+  .container { max-width: 1360px; margin: 0 auto; padding: 24px 32px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .card-header h2 { font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
+  .card-body { padding: 16px 20px; }
+
+  /* Stat cards */
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .stat-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 8px; }
+  .stat-card .value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .stat-card.accent .value { color: var(--accent); }
+  .stat-card.green .value { color: var(--green); }
+  .stat-card.yellow .value { color: var(--yellow); }
+  .stat-card.red .value { color: var(--red); }
+
+  /* Agent table */
+  .agent-table { width: 100%; border-collapse: collapse; }
+  .agent-table th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  .agent-table td { padding: 12px; border-bottom: 1px solid var(--border); }
+  .agent-table tr:last-child td { border-bottom: none; }
+  .agent-table tr:hover td { background: var(--surface2); }
+  .agent-name { font-weight: 600; }
+
+  /* Status badges */
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .badge-idle { background: var(--surface2); color: var(--text-dim); }
+  .badge-running { background: var(--blue-bg); color: var(--blue); animation: pulse 1.5s infinite; }
+  .badge-done { background: var(--green-bg); color: var(--green); }
+  .badge-error { background: var(--red-bg); color: var(--red); }
+  .badge-pending { background: var(--yellow-bg); color: var(--yellow); }
+  .badge-approved { background: var(--green-bg); color: var(--green); }
+  .badge-rejected { background: var(--red-bg); color: var(--red); }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+  /* Sprint progress */
+  .sprint-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .sprint-row:last-child { border-bottom: none; }
+  .sprint-label { flex: 0 0 220px; font-weight: 600; font-size: 13px; }
+  .sprint-bar-wrap { flex: 1; background: var(--surface2); border-radius: 6px; height: 10px; overflow: hidden; }
+  .sprint-bar { height: 100%; background: var(--accent); border-radius: 6px; transition: width 0.5s; }
+  .sprint-pct { flex: 0 0 48px; text-align: right; font-weight: 600; font-size: 13px; color: var(--text-dim); }
+
+  /* Content table */
+  .content-table { width: 100%; border-collapse: collapse; }
+  .content-table th { text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
+  .content-table td { padding: 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .content-table tr:last-child td { border-bottom: none; }
+  .content-table tr:hover td { background: var(--surface2); cursor: pointer; }
+  .content-title { font-weight: 600; }
+  .content-type { color: var(--text-dim); font-size: 12px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn-approve { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+  .btn-approve:hover { background: var(--green); color: #000; }
+  .btn-reject { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+  .btn-reject:hover { background: var(--red); color: #000; }
+  .btn-secondary { background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .btn-secondary:hover { color: var(--text); border-color: var(--text-dim); }
+  .btn-run { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(108,114,255,0.3); }
+  .btn-run:hover { background: var(--accent); color: #fff; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .actions { display: flex; gap: 6px; }
+
+  /* Modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 100; justify-content: center; align-items: start; padding-top: 60px; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 820px; max-height: 80vh; display: flex; flex-direction: column; }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-header h2 { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+  .modal-close:hover { background: var(--surface2); color: var(--text); }
+  .modal-body { padding: 24px; overflow-y: auto; flex: 1; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .modal-meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .modal-meta-item { background: var(--surface2); padding: 10px 14px; border-radius: 8px; }
+  .modal-meta-item .label { font-size: 11px; text-transform: uppercase; color: var(--text-dim); }
+  .modal-meta-item .val { font-weight: 600; margin-top: 2px; }
+  .content-body { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; }
+
+  /* Feedback input */
+  .feedback-row { display: flex; gap: 8px; align-items: center; flex: 1; margin-right: 12px; }
+  .feedback-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; color: var(--text); font-size: 13px; outline: none; }
+  .feedback-input:focus { border-color: var(--accent); }
+
+  /* Run controls */
+  .run-controls { display: flex; align-items: center; gap: 8px; }
+  .run-input { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; color: var(--text); font-size: 13px; width: 64px; text-align: center; outline: none; }
+  .run-input:focus { border-color: var(--accent); }
+
+  /* Filter tabs */
+  .filter-tabs { display: flex; gap: 4px; }
+  .filter-tab { padding: 5px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; background: transparent; border: none; color: var(--text-dim); cursor: pointer; }
+  .filter-tab:hover { background: var(--surface2); color: var(--text); }
+  .filter-tab.active { background: var(--accent-glow); color: var(--accent); }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 40px 20px; color: var(--text-dim); }
+  .empty p { margin-top: 8px; }
+
+  .mt-20 { margin-top: 20px; }
+
+  /* Auto-refresh indicator */
+  .refresh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <h1><span>Affiliate</span> Agency Dashboard</h1>
+  <div class="topbar-meta">
+    <div>Day <strong id="hdr-day">1</strong> / Week <strong id="hdr-week">1</strong></div>
+    <div>Niche: <strong id="hdr-niche">—</strong></div>
+    <div>Target: <strong id="hdr-target">—</strong></div>
+    <div class="run-controls">
+      <input type="number" id="run-day-input" class="run-input" value="1" min="1" max="30">
+      <button class="btn btn-run btn-sm" onclick="runDay()">Run Day</button>
+    </div>
+    <div><span class="refresh-dot"></span><span style="font-size:12px">Live</span></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Stat cards -->
+  <div class="grid-3" id="stat-cards">
+    <div class="stat-card accent">
+      <div class="label">Total Content</div>
+      <div class="value" id="stat-total">0</div>
+    </div>
+    <div class="stat-card yellow">
+      <div class="label">Pending Review</div>
+      <div class="value" id="stat-pending">0</div>
+    </div>
+    <div class="stat-card green">
+      <div class="label">Approved</div>
+      <div class="value" id="stat-approved">0</div>
+    </div>
+    <div class="stat-card red">
+      <div class="label">Rejected</div>
+      <div class="value" id="stat-rejected">0</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+
+    <!-- Agent Status -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Agent Status</h2>
+      </div>
+      <div class="card-body" style="padding:0">
+        <table class="agent-table">
+          <thead>
+            <tr><th>Agent</th><th>Status</th><th>Done</th><th>Last Run</th><th>Info</th></tr>
+          </thead>
+          <tbody id="agent-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sprint Progress -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Sprint Progress</h2>
+      </div>
+      <div class="card-body" id="sprint-body"></div>
+    </div>
+  </div>
+
+  <!-- Content Queue -->
+  <div class="card mt-20">
+    <div class="card-header">
+      <h2>Content Queue</h2>
+      <div class="filter-tabs">
+        <button class="filter-tab active" onclick="setFilter(null, this)">All</button>
+        <button class="filter-tab" onclick="setFilter('pending', this)">Pending</button>
+        <button class="filter-tab" onclick="setFilter('approved', this)">Approved</button>
+        <button class="filter-tab" onclick="setFilter('rejected', this)">Rejected</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="content-table">
+        <thead>
+          <tr><th>#</th><th>Title</th><th>Type</th><th>Agent</th><th>Day</th><th>Words</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="content-tbody"></tbody>
+      </table>
+      <div class="empty" id="content-empty" style="display:none">
+        <p>No content items yet. Run a day to generate content.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Review Modal -->
+<div class="modal-overlay" id="review-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Content Review</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-meta">
+        <div class="modal-meta-item"><div class="label">Type</div><div class="val" id="modal-type">—</div></div>
+        <div class="modal-meta-item"><div class="label">Agent</div><div class="val" id="modal-agent">—</div></div>
+        <div class="modal-meta-item"><div class="label">Day</div><div class="val" id="modal-day">—</div></div>
+        <div class="modal-meta-item"><div class="label">Words</div><div class="val" id="modal-words">—</div></div>
+      </div>
+      <div class="content-body" id="modal-body-text"></div>
+    </div>
+    <div class="modal-footer">
+      <div class="feedback-row">
+        <input type="text" class="feedback-input" id="modal-feedback" placeholder="Optional feedback for rejection...">
+      </div>
+      <div class="actions">
+        <button class="btn btn-approve" onclick="approveFromModal()">Approve</button>
+        <button class="btn btn-reject" onclick="rejectFromModal()">Reject</button>
+        <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentFilter = null;
+let currentModalId = null;
+
+// ── Fetch helpers ──
+
+async function fetchDashboard() {
+  const res = await fetch('/api/dashboard');
+  return res.json();
+}
+
+async function fetchContent(status) {
+  const url = status ? `/api/content?status=${status}` : '/api/content';
+  const res = await fetch(url);
+  return res.json();
+}
+
+async function fetchContentDetail(id) {
+  const res = await fetch(`/api/content/${id}`);
+  return res.json();
+}
+
+// ── Render ──
+
+function renderDashboard(data) {
+  // Header
+  document.getElementById('hdr-day').textContent = data.config.current_day;
+  document.getElementById('hdr-week').textContent = data.config.current_week;
+  document.getElementById('hdr-niche').textContent = data.config.niche.replace(/_/g, ' ');
+  document.getElementById('hdr-target').textContent = data.config.revenue_target;
+
+  // Stats
+  const s = data.content_summary;
+  document.getElementById('stat-total').textContent = s.total;
+  document.getElementById('stat-pending').textContent = s.pending;
+  document.getElementById('stat-approved').textContent = s.approved;
+  document.getElementById('stat-rejected').textContent = s.rejected;
+
+  // Agents
+  const tbody = document.getElementById('agent-tbody');
+  tbody.innerHTML = '';
+  for (const a of data.agents) {
+    const info = a.status === 'running' ? a.current_task : a.last_result_preview;
+    const infoShort = info.length > 36 ? info.slice(0, 34) + '..' : info;
+    tbody.innerHTML += `
+      <tr>
+        <td class="agent-name">${a.display_name}</td>
+        <td><span class="badge badge-${a.status}">${a.status}</span></td>
+        <td>${a.tasks_completed}</td>
+        <td style="color:var(--text-dim); font-size:12px">${a.last_run || '—'}</td>
+        <td style="color:var(--text-dim); font-size:12px">${infoShort || '—'}</td>
+      </tr>`;
+  }
+
+  // Sprint progress
+  const sprintBody = document.getElementById('sprint-body');
+  sprintBody.innerHTML = '';
+  for (const [key, sp] of Object.entries(data.sprint_progress)) {
+    const weekNum = key.replace('week_', '');
+    sprintBody.innerHTML += `
+      <div class="sprint-row">
+        <div class="sprint-label">W${weekNum}: ${sp.theme}</div>
+        <div class="sprint-bar-wrap"><div class="sprint-bar" style="width:${sp.progress_pct}%"></div></div>
+        <div class="sprint-pct">${sp.progress_pct.toFixed(0)}%</div>
+      </div>`;
+  }
+}
+
+function renderContent(items) {
+  const tbody = document.getElementById('content-tbody');
+  const empty = document.getElementById('content-empty');
+  tbody.innerHTML = '';
+  if (!items.length) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  for (const c of items) {
+    const titleShort = c.title.length > 44 ? c.title.slice(0, 42) + '..' : c.title;
+    tbody.innerHTML += `
+      <tr onclick="openReview(${c.id})">
+        <td style="color:var(--text-dim)">${c.id}</td>
+        <td class="content-title">${titleShort}</td>
+        <td class="content-type">${c.content_type}</td>
+        <td style="color:var(--text-dim); font-size:12px">${c.agent}</td>
+        <td>${c.day}</td>
+        <td>${c.word_count}</td>
+        <td><span class="badge badge-${c.status}">${c.status}</span></td>
+        <td>
+          <div class="actions" onclick="event.stopPropagation()">
+            ${c.status === 'pending' ? `
+              <button class="btn btn-approve btn-sm" onclick="approveItem(${c.id})">Approve</button>
+              <button class="btn btn-reject btn-sm" onclick="rejectItem(${c.id})">Reject</button>
+            ` : ''}
+          </div>
+        </td>
+      </tr>`;
+  }
+}
+
+// ── Actions ──
+
+async function approveItem(id) {
+  await fetch(`/api/content/${id}/approve`, { method: 'POST' });
+  refresh();
+}
+
+async function rejectItem(id, feedback) {
+  await fetch(`/api/content/${id}/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feedback: feedback || '' }),
+  });
+  refresh();
+}
+
+async function openReview(id) {
+  const data = await fetchContentDetail(id);
+  currentModalId = id;
+  document.getElementById('modal-title').textContent = data.title;
+  document.getElementById('modal-type').textContent = data.content_type;
+  document.getElementById('modal-agent').textContent = data.agent;
+  document.getElementById('modal-day').textContent = `Day ${data.day}`;
+  document.getElementById('modal-words').textContent = data.word_count;
+  document.getElementById('modal-body-text').textContent = data.body;
+  document.getElementById('modal-feedback').value = data.feedback || '';
+  document.getElementById('review-modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('review-modal').classList.remove('active');
+  currentModalId = null;
+}
+
+async function approveFromModal() {
+  if (currentModalId) { await approveItem(currentModalId); closeModal(); }
+}
+
+async function rejectFromModal() {
+  if (currentModalId) {
+    const fb = document.getElementById('modal-feedback').value;
+    await rejectItem(currentModalId, fb);
+    closeModal();
+  }
+}
+
+function setFilter(status, btn) {
+  currentFilter = status;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  refresh();
+}
+
+async function runDay() {
+  const day = parseInt(document.getElementById('run-day-input').value, 10);
+  if (day < 1 || day > 30) return;
+  const btn = document.querySelector('.btn-run');
+  btn.textContent = 'Running...';
+  btn.disabled = true;
+  await fetch(`/api/run/day/${day}`, { method: 'POST' });
+  btn.textContent = 'Run Day';
+  btn.disabled = false;
+  refresh();
+}
+
+// ── Refresh loop ──
+
+async function refresh() {
+  const [dashboard, content] = await Promise.all([
+    fetchDashboard(),
+    fetchContent(currentFilter),
+  ]);
+  renderDashboard(dashboard);
+  renderContent(content);
+}
+
+// Initial load + auto-refresh every 3s
+refresh();
+setInterval(refresh, 3000);
+
+// Close modal on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+</script>
+</body>
+</html>
