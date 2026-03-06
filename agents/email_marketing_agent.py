@@ -2,18 +2,38 @@
 Email Marketing Agent
 Manages email list building, lead magnet creation, nurture sequences,
 newsletter campaigns, and email-driven affiliate conversions.
+
+Uses Kit (ConvertKit) API for real subscriber/tag/sequence/broadcast operations.
+Uses LLM for content generation (email copy, lead magnets, landing pages).
 """
 
+import os
 from typing import Any
 
 from .base_agent import BaseAgent, AgentResult
 from config.settings import AgencyConfig, NICHE_CONFIGS
 
 
+def _get_kit_client():
+    """Lazy-load Kit client only when needed."""
+    try:
+        from utils.kit_client import KitClient
+        return KitClient()
+    except Exception:
+        return None
+
+
 class EmailMarketingAgent(BaseAgent):
 
     def __init__(self, config: AgencyConfig, llm_client: Any = None):
         super().__init__("EmailMarketingAgent", config, llm_client)
+        self._kit = None
+
+    @property
+    def kit(self):
+        if self._kit is None:
+            self._kit = _get_kit_client()
+        return self._kit
 
     @property
     def system_prompt(self) -> str:
@@ -51,28 +71,202 @@ Email types that drive affiliate revenue:
         ctx = context or {}
 
         task_map = {
+            # LLM content generation tasks
             "setup": lambda: self.setup_email_system(),
             "lead_magnet": lambda: self.create_lead_magnet(ctx.get("magnet_type", "checklist")),
             "welcome_sequence": lambda: self.create_welcome_sequence(),
             "newsletter": lambda: self.plan_newsletter(ctx.get("topic", "")),
             "landing_page": lambda: self.write_landing_page_copy(ctx.get("offer", "")),
+            # Kit API tasks (real operations)
+            "add_subscriber": lambda: self.add_subscriber(
+                ctx.get("email", ""), ctx.get("first_name"), ctx.get("tags")),
+            "list_subscribers": lambda: self.list_subscribers(),
+            "create_tag": lambda: self.create_tag(ctx.get("name", "")),
+            "list_tags": lambda: self.list_tags(),
+            "tag_subscriber": lambda: self.tag_subscriber_action(
+                int(ctx.get("tag_id", 0)), int(ctx.get("subscriber_id", 0))),
+            "list_sequences": lambda: self.list_sequences(),
+            "add_to_sequence": lambda: self.add_to_sequence(
+                int(ctx.get("sequence_id", 0)), ctx.get("email", "")),
+            "send_broadcast": lambda: self.send_broadcast(
+                ctx.get("subject", ""), ctx.get("content", ""),
+                ctx.get("preview_text", ""), ctx.get("send_at")),
+            "list_broadcasts": lambda: self.list_broadcasts(),
+            "list_forms": lambda: self.list_forms(),
+            "add_to_form": lambda: self.add_to_form(
+                int(ctx.get("form_id", 0)), ctx.get("email", ""),
+                ctx.get("first_name")),
+            "kit_status": lambda: self.kit_status(),
         }
 
         handler = task_map.get(task, lambda: self.setup_email_system())
-        output = handler()
 
-        return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+        try:
+            output = handler()
+            return AgentResult(agent_name=self.name, task=task, output=output, success=True)
+        except Exception as e:
+            return AgentResult(
+                agent_name=self.name, task=task, output=None,
+                success=False, errors=[str(e)])
+
+    # ── Kit API: Real operations ──
+
+    def kit_status(self) -> dict[str, Any]:
+        """Check Kit API connection and account status."""
+        if not self.kit:
+            return {"connected": False, "error": "Kit API not configured. Set CONVERTKIT_API_KEY in .env"}
+        try:
+            tags = self.kit.list_tags(per_page=1)
+            subs = self.kit.list_subscribers(per_page=1)
+            sequences = self.kit.list_sequences()
+            forms = self.kit.list_forms()
+            return {
+                "connected": True,
+                "tags_count": len(tags.get("tags", [])),
+                "sequences_count": len(sequences.get("sequences", [])),
+                "forms_count": len(forms.get("forms", [])),
+                "has_subscribers": bool(subs.get("subscribers")),
+            }
+        except Exception as e:
+            return {"connected": False, "error": str(e)}
+
+    def add_subscriber(self, email: str, first_name: str | None = None,
+                       tags: str | None = None) -> dict[str, Any]:
+        """Add a subscriber to Kit. Optionally apply comma-separated tag names."""
+        if not email:
+            return {"error": "email is required"}
+        if not self.kit:
+            return {"error": "Kit API not configured. Set CONVERTKIT_API_KEY in .env"}
+
+        result = self.kit.create_subscriber(email, first_name)
+        subscriber = result.get("subscriber", {})
+        self.log(f"Subscriber added/updated: {email} (id={subscriber.get('id')})")
+
+        # Apply tags if provided
+        tagged = []
+        if tags and subscriber.get("id"):
+            for tag_name in [t.strip() for t in tags.split(",") if t.strip()]:
+                tag_result = self.kit.create_tag(tag_name)
+                tag_id = tag_result.get("tag", {}).get("id")
+                if tag_id:
+                    self.kit.tag_subscriber(tag_id, subscriber["id"])
+                    tagged.append(tag_name)
+
+        return {
+            "subscriber": subscriber,
+            "tags_applied": tagged,
+        }
+
+    def list_subscribers(self) -> dict[str, Any]:
+        """List subscribers from Kit."""
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        result = self.kit.list_subscribers(per_page=100)
+        subs = result.get("subscribers", [])
+        return {
+            "count": len(subs),
+            "subscribers": [
+                {"id": s["id"], "email": s["email_address"],
+                 "first_name": s.get("first_name"), "state": s["state"]}
+                for s in subs
+            ],
+            "pagination": result.get("pagination"),
+        }
+
+    def create_tag(self, name: str) -> dict[str, Any]:
+        """Create a tag in Kit."""
+        if not name:
+            return {"error": "name is required"}
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.create_tag(name)
+
+    def list_tags(self) -> dict[str, Any]:
+        """List all tags from Kit."""
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.list_tags()
+
+    def tag_subscriber_action(self, tag_id: int, subscriber_id: int) -> dict[str, Any]:
+        """Apply a tag to a subscriber."""
+        if not tag_id or not subscriber_id:
+            return {"error": "tag_id and subscriber_id are required"}
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.tag_subscriber(tag_id, subscriber_id)
+
+    def list_sequences(self) -> dict[str, Any]:
+        """List all sequences from Kit."""
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.list_sequences()
+
+    def add_to_sequence(self, sequence_id: int, email: str) -> dict[str, Any]:
+        """Add a subscriber to a sequence."""
+        if not sequence_id or not email:
+            return {"error": "sequence_id and email are required"}
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        result = self.kit.add_subscriber_to_sequence(sequence_id, email)
+        self.log(f"Added {email} to sequence {sequence_id}")
+        return result
+
+    def send_broadcast(self, subject: str, content: str,
+                       preview_text: str = "", send_at: str | None = None) -> dict[str, Any]:
+        """Create a broadcast (newsletter) in Kit."""
+        if not subject or not content:
+            return {"error": "subject and content are required"}
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        result = self.kit.create_broadcast(
+            subject=subject, content=content,
+            preview_text=preview_text, send_at=send_at)
+        broadcast = result.get("broadcast", {})
+        self.log(f"Broadcast created: '{subject}' (id={broadcast.get('id')})")
+        return result
+
+    def list_broadcasts(self) -> dict[str, Any]:
+        """List broadcasts from Kit."""
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.list_broadcasts()
+
+    def list_forms(self) -> dict[str, Any]:
+        """List forms from Kit."""
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.list_forms()
+
+    def add_to_form(self, form_id: int, email: str,
+                    first_name: str | None = None) -> dict[str, Any]:
+        """Add a subscriber to a form."""
+        if not form_id or not email:
+            return {"error": "form_id and email are required"}
+        if not self.kit:
+            return {"error": "Kit API not configured"}
+        return self.kit.add_subscriber_to_form(form_id, email, first_name)
+
+    # ── LLM: Content generation tasks ──
 
     def setup_email_system(self) -> dict[str, Any]:
-        """Set up the complete email marketing system from Day 1."""
+        """Set up the complete email marketing system."""
         niche_config = NICHE_CONFIGS[self.config.selected_niche]
         self.log("Setting up email marketing system...")
+
+        # Check Kit connection
+        kit_connected = False
+        if self.kit:
+            try:
+                self.kit.list_tags(per_page=1)
+                kit_connected = True
+            except Exception:
+                pass
 
         prompt = f"""Design a complete email marketing system for our affiliate marketing agency.
 
 Niche: {niche_config.name}
-Tool: {self.config.email_tool} (free tier)
-Goal: Start capturing emails from Day 1, monetize by Week 3
+Tool: Kit (ConvertKit) — {'CONNECTED' if kit_connected else 'NOT YET CONNECTED'}
+Goal: Start capturing emails immediately, monetize through sequences
 
 Provide:
 1. SYSTEM SETUP:
@@ -93,7 +287,7 @@ Provide:
 
 4. TAGGING & SEGMENTATION:
    - How to tag subscribers by interest
-   - Segments to create from day 1
+   - Segments to create
    - Automation triggers
 
 5. COMPLIANCE:
@@ -103,7 +297,12 @@ Provide:
 
         system = self.call_llm(prompt)
 
-        return {"email_tool": self.config.email_tool, "setup_plan": system, "niche": niche_config.name}
+        return {
+            "email_tool": "kit",
+            "kit_connected": kit_connected,
+            "setup_plan": system,
+            "niche": niche_config.name,
+        }
 
     def create_lead_magnet(self, magnet_type: str) -> dict[str, Any]:
         """Create a lead magnet to capture email subscribers."""
