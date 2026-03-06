@@ -38,7 +38,7 @@ class ContentQueue:
         os.makedirs(data_dir, exist_ok=True)
 
     def add(self, title: str, content_type: str, agent: str, task: str,
-            body: str, day: int = 0) -> ContentItem:
+            body: str, day: int = 0, **_kwargs: Any) -> ContentItem:
         item = ContentItem(
             id=self._next_id,
             title=title,
@@ -158,6 +158,10 @@ class AgentTracker:
             a.current_task = ""
             a.last_result_preview = f"ERROR: {error[:100]}" if error else "ERROR"
 
+    @property
+    def total_completed(self) -> int:
+        return sum(a.tasks_completed for a in self.agents.values())
+
     def reset_all(self) -> None:
         for a in self.agents.values():
             a.status = "idle"
@@ -209,8 +213,8 @@ def render_dashboard(tracker: AgentTracker, content_queue: ContentQueue,
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines.append("")
     lines.append(header("AFFILIATE AGENCY DASHBOARD"))
-    lines.append(row(f"Day {config.current_day} / Week {config.current_week}", now))
-    lines.append(row(f"Niche: {config.selected_niche.value}", f"Target: {config.revenue_target}"))
+    lines.append(row(f"Niche: {config.selected_niche.value}", now))
+    lines.append(row(f"Target: {config.revenue_target}", f"Tasks run: {tracker.total_completed}"))
     lines.append(footer())
 
     # ── Agent Status ──
@@ -240,30 +244,14 @@ def render_dashboard(tracker: AgentTracker, content_queue: ContentQueue,
 
     recent = content_queue.items[-8:] if content_queue.items else []
     if recent:
-        lines.append(row(f"{'ID':>3s}  {'Status':<10s} {'Type':<16s} {'Day':>3s}  Title"))
+        lines.append(row(f"{'ID':>3s}  {'Status':<10s} {'Type':<16s} Title"))
         for item in recent:
             icon = CONTENT_STATUS_ICONS.get(item.status, "[ ]")
-            title_short = (item.title[:30] + "..") if len(item.title) > 32 else item.title
-            lines.append(row(f"{item.id:>3d}  {icon} {item.status:<6s} {item.content_type:<16s} D{item.day:<2d}  {title_short}"))
+            title_short = (item.title[:34] + "..") if len(item.title) > 36 else item.title
+            lines.append(row(f"{item.id:>3d}  {icon} {item.status:<6s} {item.content_type:<16s} {title_short}"))
     else:
-        lines.append(row("No content generated yet. Run 'day 1' to start."))
+        lines.append(row("No content generated yet. Run 'run <agent> <task>' to start."))
     lines.append(footer())
-
-    # ── Sprint Progress ──
-    if workflow:
-        lines.append("")
-        lines.append(header("SPRINT PROGRESS"))
-        progress = workflow.get_progress()
-        for wk, data in progress.items():
-            pct = data["progress_pct"]
-            filled = int(pct / 5)
-            bar = "█" * filled + "░" * (20 - filled)
-            week_num = wk.replace("week_", "")
-            lines.append(row(
-                f"W{week_num}: {data['theme'][:30]:<30s}",
-                f"[{bar}] {pct:5.1f}%"
-            ))
-        lines.append(footer())
 
     # ── Commands ──
     lines.append("")
@@ -292,7 +280,6 @@ def render_content_review(item: ContentItem) -> str:
     lines.append(f"  Type:     {item.content_type}")
     lines.append(f"  Agent:    {item.agent}")
     lines.append(f"  Task:     {item.task}")
-    lines.append(f"  Day:      {item.day}")
     lines.append(f"  Words:    {item.word_count}")
     lines.append(f"  Status:   {item.status.upper()}")
     lines.append(f"  Created:  {item.created_at}")
@@ -325,14 +312,14 @@ def render_queue_list(content_queue: ContentQueue, status_filter: str | None = N
 
     lines = [
         "",
-        f"  {'ID':>3s}  {'Status':<10s} {'Type':<16s} {'Agent':<20s} {'Day':>3s}  {'Words':>5s}  Title",
+        f"  {'ID':>3s}  {'Status':<10s} {'Type':<16s} {'Agent':<20s} {'Words':>5s}  Title",
         "  " + "─" * 90,
     ]
     for item in items:
         icon = CONTENT_STATUS_ICONS.get(item.status, "[ ]")
         title_short = (item.title[:32] + "..") if len(item.title) > 34 else item.title
         lines.append(
-            f"  {item.id:>3d}  {icon} {item.status:<6s} {item.content_type:<16s} {item.agent:<20s} D{item.day:<2d}  {item.word_count:>5d}  {title_short}"
+            f"  {item.id:>3d}  {icon} {item.status:<6s} {item.content_type:<16s} {item.agent:<20s} {item.word_count:>5d}  {title_short}"
         )
     lines.append(f"\n  Total: {len(items)} items")
     lines.append("")

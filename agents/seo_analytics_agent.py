@@ -55,7 +55,7 @@ SEO optimization priorities:
             "keyword_research": lambda: self.keyword_research(ctx.get("seed_keywords", [])),
             "optimize_content": lambda: self.optimize_content(ctx.get("content", ""), ctx.get("target_keyword", "")),
             "track_kpis": lambda: self.track_kpis(ctx.get("metrics", {})),
-            "weekly_report": lambda: self.generate_weekly_report(ctx.get("week", self.config.current_week)),
+            "weekly_report": lambda: self.generate_weekly_report(ctx.get("week", 1)),
             "competitor_seo": lambda: self.analyze_competitor_seo(ctx.get("competitor_url", "")),
             "link_audit": lambda: self.audit_affiliate_links(ctx.get("links", [])),
         }

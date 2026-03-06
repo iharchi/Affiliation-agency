@@ -163,12 +163,13 @@
 <div class="topbar">
   <h1><span>Affiliate</span> Agency Dashboard</h1>
   <div class="topbar-meta">
-    <div>Day <strong id="hdr-day">1</strong> / Week <strong id="hdr-week">1</strong></div>
+    <div>Tasks run: <strong id="hdr-tasks">0</strong></div>
     <div>Niche: <strong id="hdr-niche">—</strong></div>
     <div>Target: <strong id="hdr-target">—</strong></div>
     <div class="run-controls">
-      <input type="number" id="run-day-input" class="run-input" value="1" min="1" max="30">
-      <button class="btn btn-run btn-sm" onclick="runDay()">Run Day</button>
+      <select id="run-agent-select" class="run-input"><option value="">Agent...</option></select>
+      <select id="run-task-select" class="run-input"><option value="">Task...</option></select>
+      <button class="btn btn-run btn-sm" onclick="runAgent()">Run</button>
     </div>
     <div><span class="refresh-dot"></span><span style="font-size:12px">Live</span></div>
   </div>
@@ -308,8 +309,7 @@ async function fetchContentDetail(id) {
 
 function renderDashboard(data) {
   // Header
-  document.getElementById('hdr-day').textContent = data.config.current_day;
-  document.getElementById('hdr-week').textContent = data.config.current_week;
+  document.getElementById('hdr-tasks').textContent = data.config.tasks_completed || 0;
   document.getElementById('hdr-niche').textContent = data.config.niche.replace(/_/g, ' ');
   document.getElementById('hdr-target').textContent = data.config.revenue_target;
 
@@ -435,17 +435,41 @@ function setFilter(status, btn) {
   refresh();
 }
 
-async function runDay() {
-  const day = parseInt(document.getElementById('run-day-input').value, 10);
-  if (day < 1 || day > 30) return;
+// Load agent/task dropdowns
+let _agentTasks = {};
+async function loadAgentTasks() {
+  try {
+    const res = await fetch('/api/agents');
+    _agentTasks = await res.json();
+    const sel = document.getElementById('run-agent-select');
+    sel.innerHTML = '<option value="">Agent...</option>';
+    for (const name of Object.keys(_agentTasks)) {
+      sel.innerHTML += `<option value="${name}">${name.replace(/_/g, ' ')}</option>`;
+    }
+    sel.onchange = () => {
+      const taskSel = document.getElementById('run-task-select');
+      taskSel.innerHTML = '<option value="">Task...</option>';
+      const tasks = _agentTasks[sel.value] || {};
+      for (const t of Object.keys(tasks)) {
+        taskSel.innerHTML += `<option value="${t}">${t}</option>`;
+      }
+    };
+  } catch(e) {}
+}
+loadAgentTasks();
+
+async function runAgent() {
+  const agent = document.getElementById('run-agent-select').value;
+  const task = document.getElementById('run-task-select').value;
+  if (!agent || !task) { alert('Select an agent and task'); return; }
   const btn = document.querySelector('.btn-run');
-  const res = await fetch(`/api/run/day/${day}`, { method: 'POST' });
+  const res = await fetch('/api/run/agent', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({agent, task})
+  });
   const data = await res.json();
-  if (data.error) {
-    alert(data.error);
-    return;
-  }
-  // Button stays in running state until job completes
+  if (data.error) { alert(data.error); return; }
   btn.textContent = 'Running...';
   btn.disabled = true;
 }

@@ -90,8 +90,8 @@ Revenue optimization levers:
             },
             "progress": {
                 "revenue_vs_goal": f"{round(total_revenue / targets.monthly_revenue[0] * 100, 1) if targets.monthly_revenue[0] > 0 else 0}%",
-                "days_elapsed": self.config.current_day,
-                "days_remaining": max(0, 30 - self.config.current_day),
+                "days_elapsed": len(self.revenue_log) or 1,
+                "days_remaining": max(0, 30 - len(self.revenue_log) or 1),
             },
             "revenue_log_entries": len(self.revenue_log),
         }
@@ -119,13 +119,12 @@ Revenue optimization levers:
         self.log("Generating revenue forecast...")
 
         total_revenue = sum(e.get("amount", 0) for e in self.revenue_log)
-        days_elapsed = max(self.config.current_day, 1)
+        days_elapsed = max(len(self.revenue_log) or 1, 1)
         daily_rate = total_revenue / days_elapsed
 
         prompt = f"""Generate a revenue forecast for our affiliate marketing agency.
 
 Current data:
-- Day {self.config.current_day} of 30
 - Total revenue so far: ${total_revenue:.2f}
 - Daily revenue rate: ${daily_rate:.2f}
 - Revenue events: {len(self.revenue_log)}
@@ -162,7 +161,7 @@ Provide:
         prompt = f"""Provide revenue optimization recommendations for our affiliate agency.
 
 Revenue by program: {program_revenue or 'No data yet - provide recommendations for getting started'}
-Current day: {self.config.current_day}
+Revenue events logged: {len(self.revenue_log)}
 Budget: ${self.config.budget_monthly}/month
 
 Provide:

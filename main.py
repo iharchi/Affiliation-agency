@@ -1,13 +1,14 @@
 """
 Affiliate Marketing Agency — Main Entry Point
-Run the 30-day affiliate marketing business plan with AI agents.
+Run AI agents on-demand to execute affiliate marketing tasks.
 
 Usage:
-    python main.py                          # Interactive mode
-    python main.py --day 1                  # Run a specific day
-    python main.py --week 1                 # Run a full week
-    python main.py --full                   # Run the complete 30-day plan
-    python main.py --agent niche_research --task analyze_all  # Run specific agent task
+    python main.py                                              # Interactive mode
+    python main.py --agent niche_research --task analyze_all    # Run specific agent task
+    python main.py --agent content_creation --task write_review product="Jasper AI"
+    python main.py --agents                                     # List all agents
+    python main.py --tasks niche_research                       # List tasks for an agent
+    python main.py --integrations                               # Check integration status
 """
 
 import argparse
@@ -16,8 +17,8 @@ import os
 from typing import Any
 
 from config.settings import AgencyConfig, Niche, Platform
-from agents.orchestrator import AgencyOrchestrator
-from workflows.sprint_workflow import SprintWorkflow
+from config.integrations import load_all_integrations, print_integration_status
+from agents.orchestrator import AgencyOrchestrator, AGENT_TASKS
 from dashboard import (
     AgentTracker, ContentQueue,
     render_dashboard, render_content_review, render_queue_list,
@@ -27,7 +28,7 @@ from dashboard import (
 def setup_llm_client() -> Any:
     """Set up the LLM client based on available API keys."""
     api_key = os.getenv("ANTHROPIC_API_KEY")
-    if api_key:
+    if api_key and not api_key.startswith("your_"):
         try:
             import anthropic
             return anthropic.Anthropic(api_key=api_key)
@@ -35,7 +36,7 @@ def setup_llm_client() -> Any:
             print("[Setup] anthropic package not installed. Run: pip install anthropic")
 
     api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
+    if api_key and not api_key.startswith("your_"):
         try:
             import openai
             return openai.OpenAI(api_key=api_key)
@@ -60,34 +61,43 @@ def print_result(result: Any, indent: int = 2) -> None:
         print(json.dumps(result, indent=indent, default=str))
 
 
-def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
+def print_agents_help() -> None:
+    """Print all agents and their tasks."""
+    print("\n  AVAILABLE AGENTS & TASKS")
+    print("  " + "=" * 60)
+    for agent_name, tasks in AGENT_TASKS.items():
+        print(f"\n  {agent_name}")
+        print("  " + "-" * 40)
+        for task, desc in tasks.items():
+            print(f"    {task:<25s} {desc}")
+    print()
+
+
+def interactive_mode(orchestrator: AgencyOrchestrator,
                      tracker: AgentTracker, content_queue: ContentQueue) -> None:
     """Run the agency in interactive mode."""
     print("\n" + "=" * 60)
     print("  AFFILIATE MARKETING AGENCY — AI Agent System")
-    print("  30-Day Business Plan: Zero to First Commission")
+    print("  On-Demand Agent Execution")
     print("=" * 60)
     print(f"\n  Niche: {orchestrator.config.selected_niche.value}")
     print(f"  Target: {orchestrator.config.revenue_target} tier")
-    print(f"  Day: {orchestrator.config.current_day} | Week: {orchestrator.config.current_week}")
 
     commands = """
   Commands:
-    status          — View agency status
-    day <N>         — Run day N tasks
-    week <N>        — Run week N tasks
-    full            — Run complete 30-day plan
-    agent <name> <task> — Run a specific agent task
-    progress        — View sprint progress
-    focus           — View today's focus
-    agents          — List all agents
-    dashboard / db  — View live agent dashboard
-    queue           — List content awaiting review
-    review <ID>     — View content item in detail
-    approve <ID>    — Approve a content item
+    status              — View agency status
+    agents              — List all agents and tasks
+    tasks <agent>       — List tasks for a specific agent
+    run <agent> <task>  — Run a specific agent task
+    batch               — Run multiple tasks (enter JSON)
+    integrations        — Check integration status
+    dashboard / db      — View live agent dashboard
+    queue               — List content awaiting review
+    review <ID>         — View content item in detail
+    approve <ID>        — Approve a content item
     reject <ID> [reason] — Reject content with feedback
-    export          — Export approved content to file
-    quit            — Exit
+    export              — Export approved content to file
+    quit                — Exit
     """
     print(commands)
 
@@ -109,18 +119,24 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
             break
         elif command == "status":
             print_result(orchestrator.get_status())
-        elif command == "progress":
-            print_result(workflow.get_progress())
-        elif command == "focus":
-            print_result(workflow.get_today_focus())
         elif command == "agents":
-            for name in orchestrator.agents:
-                agent = orchestrator.agents[name]
-                print(f"  {name:25s} — {agent.__class__.__name__}")
+            print_agents_help()
+        elif command == "tasks" and len(parts) >= 2:
+            tasks = orchestrator.list_tasks(parts[1])
+            if "error" in tasks:
+                print(f"  {tasks['error']}")
+            else:
+                print(f"\n  Tasks for {parts[1]}:")
+                print("  " + "-" * 40)
+                for task, desc in tasks.items():
+                    print(f"    {task:<25s} {desc}")
+                print()
+        elif command == "integrations":
+            print_integration_status()
 
         # ── Dashboard & Content Review commands ──
         elif command in ("dashboard", "db"):
-            print(render_dashboard(tracker, content_queue, orchestrator.config, workflow))
+            print(render_dashboard(tracker, content_queue, orchestrator.config))
         elif command == "queue":
             status_filter = parts[1] if len(parts) >= 2 else None
             print(render_queue_list(content_queue, status_filter))
@@ -158,25 +174,7 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
             print(f"  Exported to: {path}")
 
         # ── Execution commands ──
-        elif command == "day" and len(parts) >= 2:
-            try:
-                day = int(parts[1])
-                result = orchestrator.run_day(day)
-                print_result(result)
-            except ValueError:
-                print("Usage: day <number>")
-        elif command == "week" and len(parts) >= 2:
-            try:
-                week = int(parts[1])
-                result = orchestrator.run_week(week)
-                print_result(result)
-            except ValueError:
-                print("Usage: week <number>")
-        elif command == "full":
-            print("Running complete 30-day plan... This may take a while.")
-            result = orchestrator.run_full_plan()
-            print_result(result)
-        elif command == "agent" and len(parts) >= 3:
+        elif command == "run" and len(parts) >= 3:
             agent_name = parts[1]
             task = parts[2]
             context = {}
@@ -187,6 +185,26 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
                         context[k] = v
             result = orchestrator.execute_task(agent_name, task, context or None)
             print_result(result)
+        elif command == "batch":
+            print("  Enter task list as JSON (one per line, empty line to run):")
+            print('  Format: [{"agent": "...", "task": "...", "context": {...}}, ...]')
+            lines = []
+            while True:
+                try:
+                    line = input("  ... ")
+                    if not line.strip():
+                        break
+                    lines.append(line)
+                except (EOFError, KeyboardInterrupt):
+                    break
+            if lines:
+                try:
+                    tasks = json.loads("\n".join(lines))
+                    results = orchestrator.run_batch(tasks)
+                    for r in results:
+                        print_result(r)
+                except json.JSONDecodeError as e:
+                    print(f"  Invalid JSON: {e}")
         else:
             print(f"Unknown command: {user_input}")
             print(commands)
@@ -194,15 +212,15 @@ def interactive_mode(orchestrator: AgencyOrchestrator, workflow: SprintWorkflow,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Affiliate Marketing Agency — AI Agent System")
-    parser.add_argument("--day", type=int, help="Run a specific day (1-30)")
-    parser.add_argument("--week", type=int, help="Run a specific week (1-4)")
-    parser.add_argument("--full", action="store_true", help="Run the complete 30-day plan")
     parser.add_argument("--agent", type=str, help="Run a specific agent")
     parser.add_argument("--task", type=str, default="", help="Task for the agent")
+    parser.add_argument("--agents", action="store_true", help="List all agents and tasks")
+    parser.add_argument("--tasks", type=str, help="List tasks for a specific agent")
+    parser.add_argument("--integrations", action="store_true", help="Check integration status")
     parser.add_argument("--niche", type=str, default="ai_saas_tools", help="Niche selection")
     parser.add_argument("--target", type=str, default="moderate", choices=["conservative", "moderate", "aggressive"])
 
-    args = parser.parse_args()
+    args, extra = parser.parse_known_args()
 
     # Load environment variables
     try:
@@ -210,6 +228,26 @@ def main() -> None:
         load_dotenv()
     except ImportError:
         pass
+
+    # Quick info commands
+    if args.agents:
+        print_agents_help()
+        return
+
+    if args.tasks:
+        tasks = AGENT_TASKS.get(args.tasks)
+        if tasks:
+            print(f"\n  Tasks for {args.tasks}:")
+            for task, desc in tasks.items():
+                print(f"    {task:<25s} {desc}")
+            print()
+        else:
+            print(f"  Unknown agent: {args.tasks}")
+        return
+
+    if args.integrations:
+        print_integration_status()
+        return
 
     # Configure
     niche_map = {n.value: n for n in Niche}
@@ -227,22 +265,18 @@ def main() -> None:
     content_queue = ContentQueue()
 
     orchestrator = AgencyOrchestrator(config, llm_client, tracker=tracker, content_queue=content_queue)
-    workflow = SprintWorkflow(config)
 
-    if args.day:
-        result = orchestrator.run_day(args.day)
-        print_result(result)
-    elif args.week:
-        result = orchestrator.run_week(args.week)
-        print_result(result)
-    elif args.full:
-        result = orchestrator.run_full_plan()
-        print_result(result)
-    elif args.agent and args.task:
-        result = orchestrator.execute_task(args.agent, args.task)
+    if args.agent and args.task:
+        # Parse extra context args: key=value pairs
+        context = {}
+        for p in extra:
+            if "=" in p:
+                k, v = p.split("=", 1)
+                context[k] = v
+        result = orchestrator.execute_task(args.agent, args.task, context or None)
         print_result(result)
     else:
-        interactive_mode(orchestrator, workflow, tracker, content_queue)
+        interactive_mode(orchestrator, tracker, content_queue)
 
 
 if __name__ == "__main__":

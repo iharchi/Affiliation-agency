@@ -133,7 +133,7 @@ Always ensure each piece of content has:
         if task == "build_calendar":
             output = self.build_30_day_calendar()
         elif task == "weekly_plan":
-            week = (context or {}).get("week", self.config.current_week)
+            week = (context or {}).get("week", 1)
             output = self.plan_week(week)
         elif task == "content_brief":
             topic = (context or {}).get("topic", "")

@@ -150,8 +150,7 @@ class SprintWorkflow:
             kpis=dict(s.kpis),
         ) for s in SPRINTS]
 
-    def get_current_sprint(self) -> Sprint:
-        week = self.config.current_week
+    def get_current_sprint(self, week: int = 1) -> Sprint:
         idx = min(week - 1, len(self.sprints) - 1)
         return self.sprints[idx]
 
@@ -179,16 +178,14 @@ class SprintWorkflow:
             }
         return progress
 
-    def get_today_focus(self) -> dict[str, Any]:
-        day = self.config.current_day
-        sprint = self.get_current_sprint()
+    def get_today_focus(self, week: int = 1, day: int = 1) -> dict[str, Any]:
+        sprint = self.get_current_sprint(week)
 
-        # Find milestones due today or overdue
+        # Find milestones due or overdue
         due = [m for m in sprint.milestones if m.day <= day and not m.completed]
         upcoming = [m for m in sprint.milestones if m.day > day][:3]
 
         return {
-            "day": day,
             "week": sprint.week,
             "theme": sprint.theme,
             "overdue_milestones": [{"name": m.name, "due_day": m.day} for m in due],

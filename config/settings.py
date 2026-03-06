@@ -82,8 +82,6 @@ class AgencyConfig:
     budget_monthly: float = 45.0
     email_tool: str = "convertkit"
     link_tracker: str = "bitly"
-    current_day: int = 1
-    current_week: int = 1
 
 
 # Pre-configured niche data

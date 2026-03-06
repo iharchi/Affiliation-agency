@@ -35,7 +35,7 @@ workflow: SprintWorkflow | None = None
 
 # Background job tracking
 _job_lock = threading.Lock()
-_current_job: dict[str, Any] = {"running": False, "day": None, "error": None}
+_current_job: dict[str, Any] = {"running": False, "task": None, "error": None}
 
 
 # ── Pages ────────────────────────────────────────────────────────────────────
@@ -73,10 +73,9 @@ def api_dashboard():
 
     return jsonify({
         "config": {
-            "current_day": config.current_day,
-            "current_week": config.current_week,
             "niche": config.selected_niche.value,
             "revenue_target": config.revenue_target,
+            "tasks_completed": tracker.total_completed,
         },
         "agents": agents_list,
         "content_summary": summary,
@@ -152,53 +151,6 @@ def api_export():
 
 # ── API: Run tasks (background) ─────────────────────────────────────────────
 
-def _complete_milestones_up_to(day: int) -> None:
-    """Mark sprint milestones as complete when their due day has been reached."""
-    if not workflow:
-        return
-    for sprint in workflow.sprints:
-        for m in sprint.milestones:
-            if m.day <= day and not m.completed:
-                workflow.complete_milestone(sprint.week, m.name)
-
-
-def _run_day_background(day: int) -> None:
-    """Execute a day's tasks in a background thread."""
-    global _current_job
-    try:
-        result = orchestrator.run_day(day)
-        _complete_milestones_up_to(day)
-        with _job_lock:
-            _current_job = {"running": False, "day": day, "error": None,
-                            "tasks_completed": result.get("tasks_completed", 0)}
-    except Exception as e:
-        with _job_lock:
-            _current_job = {"running": False, "day": day, "error": str(e)}
-        # Mark any running agents as error
-        for a in tracker.agents.values():
-            if a.status == "running":
-                tracker.mark_error(a.name, str(e))
-
-
-@app.route("/api/run/day/<int:day>", methods=["POST"])
-def api_run_day(day: int):
-    global _current_job
-    if not orchestrator:
-        return jsonify({"error": "Orchestrator not initialized"}), 500
-
-    with _job_lock:
-        if _current_job["running"]:
-            return jsonify({"error": "A job is already running",
-                            "current_day": _current_job["day"]}), 409
-
-        _current_job = {"running": True, "day": day, "error": None}
-
-    thread = threading.Thread(target=_run_day_background, args=(day,), daemon=True)
-    thread.start()
-
-    return jsonify({"ok": True, "message": f"Day {day} started in background"})
-
-
 @app.route("/api/run/agent", methods=["POST"])
 def api_run_agent():
     if not orchestrator:
@@ -222,17 +174,17 @@ def api_run_agent():
                 else:
                     tracker.mark_error(agent_name, "; ".join(result.errors))
             with _job_lock:
-                _current_job = {"running": False, "day": None, "error": None}
+                _current_job = {"running": False, "task": None, "error": None}
         except Exception as e:
             if tracker:
                 tracker.mark_error(agent_name, str(e))
             with _job_lock:
-                _current_job = {"running": False, "day": None, "error": str(e)}
+                _current_job = {"running": False, "task": None, "error": str(e)}
 
     with _job_lock:
         if _current_job["running"]:
             return jsonify({"error": "A job is already running"}), 409
-        _current_job = {"running": True, "day": None, "error": None}
+        _current_job = {"running": True, "task": None, "error": None}
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
@@ -243,6 +195,20 @@ def api_run_agent():
 def api_job_status():
     with _job_lock:
         return jsonify(_current_job)
+
+
+@app.route("/api/agents")
+def api_agents():
+    """List all agents and their available tasks."""
+    from agents.orchestrator import AGENT_TASKS
+    return jsonify(AGENT_TASKS)
+
+
+@app.route("/api/integrations")
+def api_integrations():
+    """Check integration status."""
+    from config.integrations import get_integration_status
+    return jsonify(get_integration_status())
 
 
 # ── Bootstrap ───────────────────────────────────────────────────────────────
