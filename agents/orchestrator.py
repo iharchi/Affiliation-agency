@@ -109,25 +109,36 @@ class AgencyOrchestrator:
     """
 
     def __init__(self, config: AgencyConfig | None = None, llm_client: Any = None,
-                 tracker: Any = None, content_queue: Any = None):
+                 tracker: Any = None, content_queue: Any = None,
+                 db_conn: Any = None):
         self.config = config or AgencyConfig()
         self.llm_client = llm_client
         self.tracker = tracker
         self.content_queue = content_queue
+        self.db_conn = db_conn
 
         # Initialize all agents
         self.agents = {
-            "niche_research": NicheResearchAgent(self.config, llm_client),
-            "affiliate_scout": AffiliateProgramScoutAgent(self.config, llm_client),
-            "content_strategy": ContentStrategyAgent(self.config, llm_client),
-            "content_creation": ContentCreationAgent(self.config, llm_client),
-            "seo_analytics": SEOAnalyticsAgent(self.config, llm_client),
-            "social_distribution": SocialDistributionAgent(self.config, llm_client),
-            "email_marketing": EmailMarketingAgent(self.config, llm_client),
-            "revenue_tracking": RevenueTrackingAgent(self.config, llm_client),
+            "niche_research": NicheResearchAgent(self.config, llm_client, db_conn),
+            "affiliate_scout": AffiliateProgramScoutAgent(self.config, llm_client, db_conn),
+            "content_strategy": ContentStrategyAgent(self.config, llm_client, db_conn),
+            "content_creation": ContentCreationAgent(self.config, llm_client, db_conn),
+            "seo_analytics": SEOAnalyticsAgent(self.config, llm_client, db_conn),
+            "social_distribution": SocialDistributionAgent(self.config, llm_client, db_conn),
+            "email_marketing": EmailMarketingAgent(self.config, llm_client, db_conn),
+            "revenue_tracking": RevenueTrackingAgent(self.config, llm_client, db_conn),
         }
 
         self.execution_log: list[AgentResult] = []
+        if self.db_conn:
+            from utils.persistence import load_execution_log
+            for row in load_execution_log(self.db_conn):
+                self.execution_log.append(AgentResult(
+                    agent_name=row["agent_name"], task=row["task"],
+                    output=row["output"], success=row["success"],
+                    timestamp=row["timestamp"], errors=row["errors"],
+                    metadata=row["metadata"],
+                ))
 
     def execute_task(self, agent_name: str, task: str, context: dict[str, Any] | None = None) -> AgentResult:
         """Execute a specific task on a specific agent. This is the primary interface."""
@@ -159,6 +170,13 @@ class AgencyOrchestrator:
         agent = self.agents[agent_name]
         result = agent.execute(task, context)
         self.execution_log.append(result)
+
+        # Persist execution to database
+        if self.db_conn:
+            from utils.persistence import save_execution
+            save_execution(self.db_conn, result.agent_name, result.task,
+                           result.output, result.success, result.timestamp,
+                           result.errors, result.metadata)
 
         # Update tracker
         if self.tracker:

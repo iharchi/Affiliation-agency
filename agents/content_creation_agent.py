@@ -12,8 +12,8 @@ from config.settings import AgencyConfig, ContentFormat, Platform, NICHE_CONFIGS
 
 class ContentCreationAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("ContentCreationAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("ContentCreationAgent", config, llm_client, db_conn)
 
     @property
     def system_prompt(self) -> str:

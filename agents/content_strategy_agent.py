@@ -98,8 +98,8 @@ CONTENT_FORMAT_SPECS = {
 
 class ContentStrategyAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("ContentStrategyAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("ContentStrategyAgent", config, llm_client, db_conn)
 
     @property
     def system_prompt(self) -> str:

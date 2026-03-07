@@ -260,11 +260,17 @@ def main() -> None:
 
     llm_client = setup_llm_client()
 
-    # Initialize dashboard components
-    tracker = AgentTracker()
-    content_queue = ContentQueue()
+    # Initialize SQLite persistence
+    from utils.persistence import init_db
+    db_conn = init_db()
+    print(f"[Setup] Database initialized at data/agency.db")
 
-    orchestrator = AgencyOrchestrator(config, llm_client, tracker=tracker, content_queue=content_queue)
+    # Initialize dashboard components with persistence
+    tracker = AgentTracker(db_conn=db_conn)
+    content_queue = ContentQueue(db_conn=db_conn)
+
+    orchestrator = AgencyOrchestrator(config, llm_client, tracker=tracker,
+                                      content_queue=content_queue, db_conn=db_conn)
 
     if args.agent and args.task:
         # Parse extra context args: key=value pairs

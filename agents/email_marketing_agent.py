@@ -25,8 +25,8 @@ def _get_kit_client():
 
 class EmailMarketingAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("EmailMarketingAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("EmailMarketingAgent", config, llm_client, db_conn)
         self._kit = None
 
     @property

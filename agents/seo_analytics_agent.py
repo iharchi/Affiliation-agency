@@ -12,9 +12,12 @@ from config.settings import AgencyConfig, NICHE_CONFIGS
 
 class SEOAnalyticsAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("SEOAnalyticsAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("SEOAnalyticsAgent", config, llm_client, db_conn)
         self.kpi_history: list[dict[str, Any]] = []
+        if self.db_conn:
+            from utils.persistence import load_kpi_history
+            self.kpi_history = load_kpi_history(self.db_conn)
 
     @property
     def system_prompt(self) -> str:
@@ -156,6 +159,9 @@ Provide:
             kpi_snapshot["conversion_rate"] = round(kpi_snapshot["conversions"] / kpi_snapshot["affiliate_clicks"] * 100, 2)
 
         self.kpi_history.append(kpi_snapshot)
+        if self.db_conn:
+            from utils.persistence import save_kpi_snapshot
+            save_kpi_snapshot(self.db_conn, kpi_snapshot)
 
         prompt = f"""Analyze these affiliate marketing KPIs and provide actionable insights:
 

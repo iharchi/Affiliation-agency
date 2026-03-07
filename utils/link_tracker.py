@@ -27,8 +27,28 @@ class AffiliateLink:
 class LinkTracker:
     """Manages affiliate links with UTM tracking and performance metrics."""
 
-    def __init__(self):
+    def __init__(self, db_conn: Any = None):
+        self.db_conn = db_conn
         self.links: dict[str, AffiliateLink] = {}
+        self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import load_affiliate_links
+        for link_id, data in load_affiliate_links(self.db_conn).items():
+            self.links[link_id] = AffiliateLink(
+                program=data["program"], base_url=data["base_url"],
+                affiliate_tag=data["affiliate_tag"],
+                utm_source=data.get("utm_source", ""),
+                utm_medium=data.get("utm_medium", ""),
+                utm_campaign=data.get("utm_campaign", ""),
+                utm_content=data.get("utm_content", ""),
+                clicks=data.get("clicks", 0),
+                conversions=data.get("conversions", 0),
+                revenue=data.get("revenue", 0.0),
+                created_at=data.get("created_at", ""),
+            )
 
     def create_link(
         self,
@@ -52,6 +72,10 @@ class LinkTracker:
             utm_content=content,
         )
         self.links[link_id] = link
+        if self.db_conn:
+            from utils.persistence import save_affiliate_link
+            save_affiliate_link(self.db_conn, link_id, program, base_url,
+                                affiliate_tag, source, medium, campaign, content)
         return self.build_url(link)
 
     def build_url(self, link: AffiliateLink) -> str:
@@ -82,6 +106,9 @@ class LinkTracker:
     def record_click(self, link_id: str) -> bool:
         if link_id in self.links:
             self.links[link_id].clicks += 1
+            if self.db_conn:
+                from utils.persistence import update_link_clicks
+                update_link_clicks(self.db_conn, link_id)
             return True
         return False
 
@@ -89,6 +116,9 @@ class LinkTracker:
         if link_id in self.links:
             self.links[link_id].conversions += 1
             self.links[link_id].revenue += revenue
+            if self.db_conn:
+                from utils.persistence import update_link_conversion
+                update_link_conversion(self.db_conn, link_id, revenue)
             return True
         return False
 

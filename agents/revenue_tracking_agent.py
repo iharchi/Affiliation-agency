@@ -12,9 +12,12 @@ from config.settings import AgencyConfig, REVENUE_TARGETS, NICHE_CONFIGS
 
 class RevenueTrackingAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("RevenueTrackingAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("RevenueTrackingAgent", config, llm_client, db_conn)
         self.revenue_log: list[dict[str, Any]] = []
+        if self.db_conn:
+            from utils.persistence import load_revenue_log
+            self.revenue_log = load_revenue_log(self.db_conn)
 
     @property
     def system_prompt(self) -> str:
@@ -100,14 +103,19 @@ Revenue optimization levers:
 
     def log_revenue_event(self, event: dict[str, Any]) -> dict[str, Any]:
         """Log a revenue event (click, conversion, commission)."""
-        self.revenue_log.append({
+        entry = {
             "program": event.get("program", "unknown"),
             "amount": event.get("amount", 0),
             "clicks": event.get("clicks", 0),
             "conversions": event.get("conversions", 0),
             "source_content": event.get("content", ""),
             "platform": event.get("platform", ""),
-        })
+        }
+        self.revenue_log.append(entry)
+
+        if self.db_conn:
+            from utils.persistence import save_revenue_event
+            save_revenue_event(self.db_conn, **entry)
 
         self.log(f"Revenue event logged: ${event.get('amount', 0)} from {event.get('program', 'unknown')}")
 

@@ -12,9 +12,12 @@ from config.settings import AgencyConfig, Niche, AFFILIATE_PROGRAMS, NICHE_CONFI
 
 class AffiliateProgramScoutAgent(BaseAgent):
 
-    def __init__(self, config: AgencyConfig, llm_client: Any = None):
-        super().__init__("AffiliateProgramScoutAgent", config, llm_client)
+    def __init__(self, config: AgencyConfig, llm_client: Any = None, db_conn: Any = None):
+        super().__init__("AffiliateProgramScoutAgent", config, llm_client, db_conn)
         self.program_portfolio: list[dict[str, Any]] = []
+        if self.db_conn:
+            from utils.persistence import load_portfolio
+            self.program_portfolio = load_portfolio(self.db_conn)
 
     @property
     def system_prompt(self) -> str:
@@ -134,6 +137,9 @@ Recommend:
 
         portfolio["strategy"] = strategy
         self.program_portfolio = all_programs
+        if self.db_conn:
+            from utils.persistence import save_portfolio
+            save_portfolio(self.db_conn, self.program_portfolio)
         return portfolio
 
     def evaluate_program(self, program_name: str) -> dict[str, Any]:

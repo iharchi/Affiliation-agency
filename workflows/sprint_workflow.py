@@ -139,8 +139,9 @@ SPRINTS = [
 class SprintWorkflow:
     """Manages sprint execution and milestone tracking."""
 
-    def __init__(self, config: AgencyConfig):
+    def __init__(self, config: AgencyConfig, db_conn: Any = None):
         self.config = config
+        self.db_conn = db_conn
         self.sprints = [Sprint(
             week=s.week,
             theme=s.theme,
@@ -149,6 +150,18 @@ class SprintWorkflow:
             deliverables=list(s.deliverables),
             kpis=dict(s.kpis),
         ) for s in SPRINTS]
+        self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import load_milestones
+        saved = load_milestones(self.db_conn)
+        for sprint in self.sprints:
+            for m in sprint.milestones:
+                key = (sprint.week, m.name)
+                if key in saved:
+                    m.completed = saved[key]
 
     def get_current_sprint(self, week: int = 1) -> Sprint:
         idx = min(week - 1, len(self.sprints) - 1)
@@ -161,6 +174,9 @@ class SprintWorkflow:
         for m in sprint.milestones:
             if m.name == milestone_name:
                 m.completed = True
+                if self.db_conn:
+                    from utils.persistence import save_milestone
+                    save_milestone(self.db_conn, week, milestone_name, True)
                 return True
         return False
 

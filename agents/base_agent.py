@@ -33,12 +33,15 @@ class AgentResult:
 class BaseAgent(ABC):
     """Base class for all agents in the Affiliate Marketing Agency."""
 
-    def __init__(self, name: str, config: AgencyConfig, llm_client: Any = None):
+    def __init__(self, name: str, config: AgencyConfig, llm_client: Any = None,
+                 db_conn: Any = None):
         self.name = name
         self.config = config
         self.llm_client = llm_client
+        self.db_conn = db_conn
         self.memory: list[AgentMessage] = []
         self.results: list[AgentResult] = []
+        self._load_from_db()
 
     @property
     @abstractmethod
@@ -51,8 +54,43 @@ class BaseAgent(ABC):
         """Execute the agent's primary task."""
         ...
 
+    def _load_from_db(self) -> None:
+        """Restore memory and results from the database."""
+        if not self.db_conn:
+            return
+        from utils.persistence import load_memory, load_results
+        for row in load_memory(self.db_conn, self.name):
+            self.memory.append(AgentMessage(
+                role=row["role"], content=row["content"],
+                timestamp=row["timestamp"], metadata=row["metadata"],
+            ))
+        for row in load_results(self.db_conn, self.name):
+            self.results.append(AgentResult(
+                agent_name=row["agent_name"], task=row["task"],
+                output=row["output"], success=row["success"],
+                timestamp=row["timestamp"], errors=row["errors"],
+                metadata=row["metadata"],
+            ))
+
+    def _persist_memory(self, msg: AgentMessage) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import save_memory
+        save_memory(self.db_conn, self.name, msg.role, msg.content,
+                    msg.timestamp, msg.metadata)
+
+    def _persist_result(self, result: AgentResult) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import save_result
+        save_result(self.db_conn, result.agent_name, result.task,
+                    result.output, result.success, result.timestamp,
+                    result.errors, result.metadata)
+
     def add_to_memory(self, role: str, content: str, **metadata: Any) -> None:
-        self.memory.append(AgentMessage(role=role, content=content, metadata=metadata))
+        msg = AgentMessage(role=role, content=content, metadata=metadata)
+        self.memory.append(msg)
+        self._persist_memory(msg)
 
     def get_memory_context(self, last_n: int = 10) -> list[dict[str, str]]:
         messages = self.memory[-last_n:]

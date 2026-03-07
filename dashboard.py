@@ -31,25 +31,51 @@ class ContentItem:
 class ContentQueue:
     """Stores generated content for review and approval."""
 
-    def __init__(self, data_dir: str = "data"):
+    def __init__(self, data_dir: str = "data", db_conn: Any = None):
         self.items: list[ContentItem] = []
         self._next_id = 1
         self.data_dir = data_dir
+        self.db_conn = db_conn
         os.makedirs(data_dir, exist_ok=True)
+        self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import load_content_items
+        for row in load_content_items(self.db_conn):
+            item = ContentItem(
+                id=row["id"], title=row["title"],
+                content_type=row["content_type"], agent=row["agent"],
+                task=row["task"], body=row["body"], status=row["status"],
+                feedback=row["feedback"] or "", day=row["day"],
+                word_count=row["word_count"],
+                created_at=row["created_at"],
+            )
+            self.items.append(item)
+        if self.items:
+            self._next_id = max(i.id for i in self.items) + 1
 
     def add(self, title: str, content_type: str, agent: str, task: str,
             body: str, day: int = 0, **_kwargs: Any) -> ContentItem:
+        word_count = len(body.split())
+        db_id = None
+        if self.db_conn:
+            from utils.persistence import save_content_item
+            db_id = save_content_item(self.db_conn, title, content_type,
+                                      agent, task, body, day, word_count)
         item = ContentItem(
-            id=self._next_id,
+            id=db_id or self._next_id,
             title=title,
             content_type=content_type,
             agent=agent,
             task=task,
             body=body,
             day=day,
-            word_count=len(body.split()),
+            word_count=word_count,
         )
-        self._next_id += 1
+        if not db_id:
+            self._next_id += 1
         self.items.append(item)
         return item
 
@@ -63,6 +89,9 @@ class ContentQueue:
         item = self.get(item_id)
         if item:
             item.status = "approved"
+            if self.db_conn:
+                from utils.persistence import update_content_status
+                update_content_status(self.db_conn, item_id, "approved")
             return True
         return False
 
@@ -71,6 +100,9 @@ class ContentQueue:
         if item:
             item.status = "rejected"
             item.feedback = feedback
+            if self.db_conn:
+                from utils.persistence import update_content_status
+                update_content_status(self.db_conn, item_id, "rejected", feedback)
             return True
         return False
 
@@ -129,16 +161,43 @@ class AgentTracker:
         "revenue_tracking": "Revenue Tracking",
     }
 
-    def __init__(self):
+    def __init__(self, db_conn: Any = None):
+        self.db_conn = db_conn
         self.agents: dict[str, AgentStatus] = {}
         for key, display in self.AGENT_DISPLAY.items():
             self.agents[key] = AgentStatus(name=key, display_name=display)
+        self._load_from_db()
+
+    def _load_from_db(self) -> None:
+        if not self.db_conn:
+            return
+        from utils.persistence import load_tracker_states
+        saved = load_tracker_states(self.db_conn)
+        for name, data in saved.items():
+            if name in self.agents:
+                a = self.agents[name]
+                a.status = data.get("status", "idle")
+                a.current_task = data.get("current_task", "")
+                a.tasks_completed = data.get("tasks_completed", 0)
+                a.tasks_failed = data.get("tasks_failed", 0)
+                a.last_run = data.get("last_run", "")
+                a.last_result_preview = data.get("last_result_preview", "")
+
+    def _persist(self, agent_name: str) -> None:
+        if not self.db_conn or agent_name not in self.agents:
+            return
+        from utils.persistence import save_tracker_state
+        a = self.agents[agent_name]
+        save_tracker_state(self.db_conn, a.name, a.display_name, a.status,
+                           a.current_task, a.tasks_completed, a.tasks_failed,
+                           a.last_run, a.last_result_preview)
 
     def mark_running(self, agent_name: str, task: str) -> None:
         if agent_name in self.agents:
             a = self.agents[agent_name]
             a.status = "running"
             a.current_task = task
+            self._persist(agent_name)
 
     def mark_done(self, agent_name: str, result_preview: str = "") -> None:
         if agent_name in self.agents:
@@ -148,6 +207,7 @@ class AgentTracker:
             a.last_run = datetime.now().strftime("%H:%M:%S")
             a.current_task = ""
             a.last_result_preview = result_preview[:120] if result_preview else ""
+            self._persist(agent_name)
 
     def mark_error(self, agent_name: str, error: str = "") -> None:
         if agent_name in self.agents:
@@ -157,6 +217,7 @@ class AgentTracker:
             a.last_run = datetime.now().strftime("%H:%M:%S")
             a.current_task = ""
             a.last_result_preview = f"ERROR: {error[:100]}" if error else "ERROR"
+            self._persist(agent_name)
 
     @property
     def total_completed(self) -> int:
